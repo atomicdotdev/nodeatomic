@@ -1,4 +1,5 @@
 import { createRequire } from 'node:module';
+import { createHash } from 'node:crypto';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -12,7 +13,8 @@ require('protobufjs/ext/descriptor');
 const pbjs = require('protobufjs-cli/pbjs');
 const pbts = require('protobufjs-cli/pbts');
 const native = loadAddon();
-const root = protobuf.Root.fromDescriptor(native.descriptor()).resolveAll();
+const descriptor = native.descriptor();
+const root = protobuf.Root.fromDescriptor(descriptor).resolveAll();
 // Generate only the supported methods' messages and their referenced types.
 // The full descriptor remains owned by libatomic, not by this package.
 const needed = new Set();
@@ -65,6 +67,8 @@ try {
   const generated = join(destination, 'proto.cjs');
   writeFileSync(generated, source);
   writeFileSync(join(destination, 'proto.d.cts'), await run(pbts, [generated]));
+  const hash = createHash('sha256').update(descriptor).digest('hex');
+  writeFileSync(join(destination, 'runtime-contract.ts'), `// Generated from the producer's full embedded descriptor.\nexport const descriptorSha256 = '${hash}';\n`);
   console.log('Generated JS and TypeScript types from libatomic\'s embedded protobuf contract.');
 } finally {
   rmSync(scratch, { recursive: true, force: true });

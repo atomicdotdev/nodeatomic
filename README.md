@@ -1,14 +1,90 @@
 # nodeatomic
 
-A TypeScript/JavaScript package that loads **libatomic's compiled Node addon**.
+A TypeScript/JavaScript package that dynamically loads **Atomic's installed
+Node-enabled libatomic**, selected by the Node/Electron host's OS and CPU.
 All Rust code—including the Node-API exports—lives in the separate Atomic
 project. This project has no Cargo manifest, Rust sources, or Rust lockfile.
 
 No atomicd, RPC connection, or service process is required.
 
-## Consume a prebuilt addon
+## Load an installed Atomic runtime
 
-Requires Node 18+. **This package never invokes Cargo, discovers an Atomic
+Requires Node 18+ with Node-API 8+. Supported native release targets are:
+
+| Host OS / CPU | Installed library | Rust target |
+| --- | --- | --- |
+| macOS ARM64 | `libatomic.dylib` | `aarch64-apple-darwin` |
+| Linux x64 glibc | `libatomic.so` | `x86_64-unknown-linux-gnu` |
+| Windows x64 | `libatomic.dll` | `x86_64-pc-windows-msvc` |
+
+Intel Macs, Linux ARM64, Alpine/musl and Windows ARM64 are not supported by the
+current native release matrix. Selection uses `process.platform` and
+`process.arch` of the **extension host**, not the user's desktop. Remote SSH,
+WSL and containers need Atomic installed in the remote environment.
+
+Install the complete matching Atomic release archive in a versioned directory,
+keeping the executable, library and `libatomic-runtime.json` together. The loader
+uses this order:
+
+1. **`ATOMIC_RUNTIME_DIR`**: an explicit absolute installation-directory path;
+   requires release metadata.
+2. **`LIBATOMIC_ADDON`**: an explicit absolute library path, primarily for
+   development/CI. Do not set it together with `ATOMIC_RUNTIME_DIR`.
+3. **`ATOMIC_BIN`**: an explicit absolute Atomic executable path; load the runtime
+   beside its resolved executable, following symlinks.
+4. Otherwise, find the **first Atomic executable on PATH** (`atomic.exe` on
+   Windows), resolve its symlinks, and load the adjacent runtime.
+
+For example:
+
+```sh
+ATOMIC_RUNTIME_DIR=/absolute/path/to/atomic/v0.19.1 node my-app.mjs
+```
+
+Discovery reads files only: it never executes the CLI, invokes Cargo, downloads
+anything, discovers an Atomic source checkout, or picks an arbitrary "latest"
+version. Empty/relative PATH entries, the current working directory and executable
+paths inside it are excluded from automatic discovery. PATH is an installation
+trust boundary: launch with a trusted PATH, not workspace-controlled executable
+directories. Explicit overrides deliberately identify a trusted artifact and can
+point into a developer checkout.
+
+An invalid explicit/active installation is a hard error; the loader never silently
+tries a different installation or a package-bundled binary. Missing installations
+report how to install Atomic or configure `ATOMIC_RUNTIME_DIR`. Errors expose a
+stable `code` through the exported `AtomicRuntimeError` class.
+
+### Validation and compatibility
+
+Before loading a distributed runtime, nodeatomic checks its manifest schema,
+release identity fields, OS/CPU/target, Node-API requirement, library filename,
+binary SHA-256, and descriptor fingerprint. It loads the platform suffix directly
+with `process.dlopen` and verifies `call()` / `descriptor()` exports and the actual
+descriptor checksum. The full descriptor **must exactly match** the descriptor
+used to generate this nodeatomic build. Even an additive schema change currently
+requires regenerating/updating the consumer; OS/CPU matching alone is not enough.
+The JSON metadata and checksums are not signatures or independent signer trust.
+
+Explicit development artifacts may lack a manifest, but still must load on this
+host, expose the Node API, and match the generated descriptor at runtime. If an
+adjacent manifest exists, the override cannot bypass its checks.
+
+Importing nodeatomic or using its protobuf codecs does not load native code. The
+first Atomic operation loads and validates the library; successful loads are
+cached for the process. Restart the extension host after an Atomic runtime update.
+Install new versions side by side; never overwrite a library that an editor may
+have mapped. A failed discovery attempt is not cached, so explicit configuration
+can be corrected before retrying.
+
+The distributable npm package contains JavaScript/types/codecs, **not native
+binaries**. Catalyst's existing build script still bundles its own native addon;
+removing that bundle and wiring installation guidance into the extension remain
+separate work. External Atomic installers/self-update must also preserve the
+runtime files; older CLI-only installations are not sufficient.
+
+## Build with a prebuilt producer artifact
+
+**This package never invokes Cargo, discovers an Atomic
 checkout, or builds native code.** Its inputs are a compiled addon and its own
 JavaScript dependencies. The projects need not be siblings.
 
@@ -17,7 +93,7 @@ cd ~/Projects/nodeatomic
 npm ci
 LIBATOMIC_ADDON=/path/to/prebuilt/libatomic.node npm run install:addon
 npm run build
-npm run status -- /path/to/repository
+LIBATOMIC_ADDON=/absolute/path/to/prebuilt/libatomic.node npm run status -- /path/to/repository
 ```
 
 Alternatively, pass the artifact path as an argument:
@@ -26,19 +102,24 @@ Alternatively, pass the artifact path as an argument:
 npm run install:addon -- /path/to/prebuilt/libatomic.node
 ```
 
-`install:addon` copies the supplied file to `native/libatomic.node`; it never
-compiles or downloads anything. The artifact must match the host OS/architecture
+`install:addon` is a build/development convenience: it copies the supplied file to
+`native/libatomic.node`; it never compiles or downloads anything. The artifact must
+match the host OS/architecture
 and be built with libatomic's `node` feature. On macOS it can be the unrenamed
 `liblibatomic.dylib`; on Linux `liblibatomic.so`; on Windows `libatomic.dll`.
 Changing its extension to `.node` doesn't change the binary's contents.
 
-`npm run build` loads that installed addon, generates protobuf codecs/types from
-its descriptor, and compiles TypeScript. The addon must include the basic
+`npm run build` uses the shared loader, generates protobuf codecs/types and a full
+descriptor fingerprint, then compiles TypeScript. The build-only helper can use
+`native/libatomic.node` if it was explicitly copied by `install:addon` and no
+runtime/CLI override is configured. Public runtime calls do not use this fallback.
+Set `ATOMIC_RUNTIME_DIR` or `LIBATOMIC_ADDON` during build to select a specific
+producer explicitly. The addon must include the basic
 mutation/query/view protobuf contract and the corresponding LocalService dispatch;
 an older addon cannot serve these methods. A missing addon fails with installation
 instructions rather than attempting a source build. An incompatible addon fails
-while loading. `LIBATOMIC_ADDON` is used only by the explicit installation step;
-setting it during `npm run build` does not implicitly install or rebuild anything.
+while loading. `LIBATOMIC_ADDON` now selects an explicit artifact for runtime and
+code generation too; it does not implicitly install or rebuild anything.
 Restart processes using the addon before replacing it.
 
 ## Build the producer separately (local development only)
@@ -48,7 +129,7 @@ If you don't already have a binary, build it explicitly in the **Atomic project*
 ```sh
 cd ~/Projects/atomic
 cargo build --locked -p libatomic --features node
-LIBATOMIC_ADDON=~/Projects/atomic/target/debug/liblibatomic.dylib
+export LIBATOMIC_ADDON=~/Projects/atomic/target/debug/liblibatomic.dylib
 ```
 
 Then consume it in this project. Example for macOS:
@@ -60,17 +141,28 @@ npm run build
 ```
 
 Only the producer step requires Rust or Atomic's source. No Rust files live here.
-An optimized producer build uses Cargo's `--release`; release hardening
-(including panic behavior) and native platform distribution remain separate
-work before production shipping.
+An optimized producer build uses Cargo's `--release`. Atomic owns native platform
+distribution; release hardening (including panic behavior) and actual
+Node/Electron host testing remain production release gates.
 
 ## CI boundary
 
 Atomic CI owns compiling/testing the addon. Consumer CI supplies a specific
-already-built artifact, runs `npm ci`, `npm run install:addon`, and `npm run build`.
+already-built artifact or complete runtime directory, runs `npm ci`, and builds
+with `LIBATOMIC_ADDON` or `ATOMIC_RUNTIME_DIR` set. An explicit `install:addon`
+step is optional for local code generation only.
 No Rust toolchain or Atomic source checkout is needed for the consumer build.
-Artifact publishing/downloading and version/checksum pinning are not implemented
-by these scripts; CI must supply the intended binary explicitly.
+Artifact publishing/downloading is not implemented here; CI must supply a pinned
+producer. Runtime manifest/hash checks validate that supplied installation, not
+the authenticity of a download. For tests:
+
+```sh
+npm run test:runtime # resolver/build-tool unit tests; no native library required
+ATOMIC_RUNTIME_DIR=/absolute/path/to/atomic-install npm test
+```
+
+The full suite also needs the Atomic CLI on PATH (or an absolute `ATOMIC_BIN`)
+to create temporary fixtures. Repository operations under test remain in-process.
 
 ## API
 

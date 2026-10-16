@@ -3,6 +3,7 @@ import type { atomic as Contract } from './generated/proto.cjs';
 import { call, proto as atomic } from './native.js';
 
 export { call, proto } from './native.js';
+export { AtomicRuntimeError } from './runtime/loader.mjs';
 export { openRepository, AtomicRepository } from './repository.js';
 export type {
   GetVaultOptions, ListVaultOptions, VaultContextOptions, VerificationOptions,

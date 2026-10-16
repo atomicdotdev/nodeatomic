@@ -10,6 +10,8 @@ async function fixture(t) {
   const root = await mkdtemp(join(tmpdir(), 'nodeatomic-build-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   await mkdir(join(root, 'scripts'));
+  await mkdir(join(root, 'ts/runtime'), { recursive: true });
+  await copyFile(new URL('../ts/runtime/loader.mjs', import.meta.url), join(root, 'ts/runtime/loader.mjs'));
   for (const name of ['install-addon.mjs', 'addon.mjs']) {
     await copyFile(new URL(`../scripts/${name}`, import.meta.url), join(root, 'scripts', name));
   }
@@ -22,6 +24,12 @@ function install(root, source, args = []) {
   return spawnSync(process.execPath, [join(root, 'scripts/install-addon.mjs'), ...args], {
     cwd: root, env, encoding: 'utf8', timeout: 10_000,
   });
+}
+
+function isolatedRuntimeEnv() {
+  const env = { ...process.env, PATH: '', ATOMIC_SOURCE: '/nonexistent' };
+  for (const key of ['LIBATOMIC_ADDON', 'ATOMIC_RUNTIME_DIR', 'ATOMIC_BIN']) delete env[key];
+  return env;
 }
 
 test('addon installation requires an explicit binary, never a source checkout', async (t) => {
@@ -62,8 +70,9 @@ test('missing addon fails clearly instead of trying to compile Atomic', async (t
   const result = spawnSync(process.execPath, ['--input-type=module', '-e', `
     import { loadAddon } from ${JSON.stringify(module)};
     loadAddon();
-  `], { cwd: root, env: { ...process.env, PATH: '', ATOMIC_SOURCE: '/nonexistent' }, encoding: 'utf8', timeout: 10_000 });
+  `], { cwd: root, env: isolatedRuntimeEnv(), encoding: 'utf8', timeout: 10_000 });
   assert.equal(result.status, 1);
-  assert.match(result.stderr, /Missing native\/libatomic.node/);
+  assert.match(result.stderr, /Atomic is not installed/);
+  assert.match(result.stderr, /ATOMIC_RUNTIME_DIR/);
   assert.match(result.stderr, /does not build Atomic/);
 });

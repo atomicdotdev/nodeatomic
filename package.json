@@ -13,7 +13,6 @@
   },
   "files": [
     "dist",
-    "native",
     "README.md"
   ],
   "engines": {
@@ -25,6 +24,7 @@
     "build:ts": "tsc && node scripts/copy-generated.mjs",
     "build": "npm run generate:proto && npm run build:ts",
     "test": "npm run build && node --test test/*.test.mjs",
+    "test:runtime": "node --test test/runtime.test.mjs test/build.test.mjs",
     "status": "node scripts/status.mjs"
   },
   "devDependencies": {
