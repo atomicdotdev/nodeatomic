@@ -1,0 +1,38 @@
+{
+  "name": "nodeatomic",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "In-process TypeScript bindings to Atomic's service layer",
+  "license": "MIT OR Apache-2.0",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "native",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "install:addon": "node scripts/install-addon.mjs",
+    "generate:proto": "node scripts/generate-proto.mjs",
+    "build:ts": "tsc && node scripts/copy-generated.mjs",
+    "build": "npm run generate:proto && npm run build:ts",
+    "test": "npm run build && node --test test/*.test.mjs",
+    "status": "node scripts/status.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "protobufjs-cli": "^2.7.1",
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "protobufjs": "^8.8.1"
+  }
+}
