@@ -7,7 +7,9 @@ import { test } from 'node:test';
 
 const entry = new URL('../dist/index.js', import.meta.url).href;
 const isolatedEnv = () => {
-  const env = { ...process.env, PATH: '' };
+  // XDG_STATE_HOME points at a nonexistent directory so a real installation
+  // record on the test host cannot make discovery succeed unexpectedly.
+  const env = { ...process.env, PATH: '', XDG_STATE_HOME: '/nonexistent/nodeatomic-loading-state' };
   for (const key of ['ATOMIC_RUNTIME_DIR', 'LIBATOMIC_ADDON', 'ATOMIC_BIN']) delete env[key];
   return env;
 };

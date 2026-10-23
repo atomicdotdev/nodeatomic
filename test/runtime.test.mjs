@@ -53,6 +53,53 @@ function rejectsCode(operation, code) {
   assert.throws(operation, (error) => error instanceof AtomicRuntimeError && error.code === code);
 }
 
+function writeRecord(state, body) {
+  mkdirSync(join(state, 'atomic'), { recursive: true });
+  writeFileSync(join(state, 'atomic', 'install.json'), JSON.stringify(body));
+  return state;
+}
+
+test('a registered installation is discovered without PATH or environment configuration', (t) => {
+  const f = fixture(t);
+  const env = { XDG_STATE_HOME: writeRecord(join(f.root, 'state'), { schema_version: 1, source: 'official-installer', runtime_dir: f.install }) };
+  assert.equal(resolveRuntime({ ...f.options, env }).path, f.path);
+  assert.equal(loadAddon({ ...f.options, env }), f.addon);
+  assert.equal(f.loads(), 1);
+});
+
+test('a record without runtime_dir is a CLI-only install, not a registration', (t) => {
+  const f = fixture(t);
+  const env = { XDG_STATE_HOME: writeRecord(join(f.root, 'state'), { schema_version: 1, source: 'official-installer' }), PATH: f.install };
+  assert.equal(resolveRuntime({ ...f.options, env }).path, f.path);
+});
+
+test('a broken registration is a hard error and never falls through to PATH', (t) => {
+  const f = fixture(t, cases.find((spec) => spec.platform === process.platform));
+  const broken = join(f.root, 'registered-but-empty');
+  mkdirSync(broken);
+  const env = { XDG_STATE_HOME: writeRecord(join(f.root, 'state'), { schema_version: 1, runtime_dir: broken }), PATH: f.install };
+  rejectsCode(() => loadAddon({ ...f.options, env }), 'ATOMIC_RUNTIME_MANIFEST');
+  assert.equal(f.loads(), 0);
+});
+
+test('a registration cannot point at relative paths or an unreadable record', (t) => {
+  const f = fixture(t);
+  rejectsCode(() => loadAddon({ ...f.options, env: { XDG_STATE_HOME: writeRecord(join(f.root, 'a'), { runtime_dir: 'relative/dir' }) } }), 'ATOMIC_RUNTIME_CONFIGURATION');
+  const state = join(f.root, 'b');
+  mkdirSync(join(state, 'atomic'), { recursive: true });
+  writeFileSync(join(state, 'atomic', 'install.json'), '{broken');
+  rejectsCode(() => loadAddon({ ...f.options, env: { XDG_STATE_HOME: state } }), 'ATOMIC_RUNTIME_CONFIGURATION');
+  assert.equal(f.loads(), 0);
+});
+
+test('explicit configuration still outranks a registration', (t) => {
+  const f = fixture(t);
+  const broken = join(f.root, 'stale-registration');
+  mkdirSync(broken);
+  const env = { ATOMIC_RUNTIME_DIR: f.install, XDG_STATE_HOME: writeRecord(join(f.root, 'state'), { runtime_dir: broken }) };
+  assert.equal(loadAddon({ ...f.options, env }), f.addon);
+});
+
 for (const spec of cases) {
   test(`selects and verifies ${spec.target} with no CLI subprocess`, (t) => {
     const f = fixture(t, spec);

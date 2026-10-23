@@ -32,7 +32,13 @@ uses this order:
    development/CI. Do not set it together with `ATOMIC_RUNTIME_DIR`.
 3. **`ATOMIC_BIN`**: an explicit absolute Atomic executable path; load the runtime
    beside its resolved executable, following symlinks.
-4. Otherwise, find the **first Atomic executable on PATH** (`atomic.exe` on
+4. Otherwise, load the **registered installation**: the `runtime_dir` recorded by
+   the official installer in `${XDG_STATE_HOME:-$HOME/.local/state}/atomic/install.json`
+   (macOS default: `~/Library/Application Support/Atomic`). This is how an editor
+   launched from the Dock finds Atomic with no PATH or environment setup. A
+   registration whose directory is missing or invalid is a hard error; it never
+   falls through to PATH.
+5. Otherwise, find the **first Atomic executable on PATH** (`atomic.exe` on
    Windows), resolve its symlinks, and load the adjacent runtime.
 
 For example:
