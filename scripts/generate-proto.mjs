@@ -36,6 +36,12 @@ for (const name of [
   'SwitchViewRequest', 'SwitchViewResponse', 'DeleteViewRequest', 'DeleteViewResponse',
   'GetVaultEntryRequest', 'GetVaultEntryResponse', 'ListVaultEntriesRequest', 'ListVaultEntriesResponse',
   'GetVaultContextRequest', 'GetVaultContextResponse', 'VerifyAttestationRequest', 'VerifyAttestationResponse',
+  'QueryGraphRequest', 'QueryGraphResponse',
+  'GetProjectIdentityRequest', 'GetProjectIdentityResponse',
+  'GetWorkflowSnapshotRequest', 'GetWorkflowSnapshotResponse',
+  'KGNode', 'KGEdge', 'CodeCaller',
+  'NeighborsQuery', 'CallersQuery', 'GraphSliceQuery',
+  'MaintainKnowledgeGraphRequest', 'MaintainKnowledgeGraphResponse',
 ]) {
   let type;
   try {
