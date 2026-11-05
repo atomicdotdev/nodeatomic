@@ -26,8 +26,8 @@ function install(root, source, args = []) {
   });
 }
 
-function isolatedRuntimeEnv() {
-  const env = { ...process.env, PATH: '', ATOMIC_SOURCE: '/nonexistent' };
+function isolatedRuntimeEnv(root) {
+  const env = { ...process.env, PATH: '', HOME: root, XDG_STATE_HOME: root, ATOMIC_SOURCE: '/nonexistent' };
   for (const key of ['LIBATOMIC_ADDON', 'ATOMIC_RUNTIME_DIR', 'ATOMIC_BIN']) delete env[key];
   return env;
 }
@@ -69,10 +69,8 @@ test('missing addon fails clearly instead of trying to compile Atomic', async (t
   const module = pathToFileURL(join(root, 'scripts/addon.mjs')).href;
   const result = spawnSync(process.execPath, ['--input-type=module', '-e', `
     import { loadAddon } from ${JSON.stringify(module)};
-    loadAddon();
-  `], { cwd: root, env: isolatedRuntimeEnv(), encoding: 'utf8', timeout: 10_000 });
+    try { loadAddon(); } catch (error) { console.error(error.code); process.exit(1); }
+  `], { cwd: root, env: isolatedRuntimeEnv(root), encoding: 'utf8', timeout: 10_000 });
   assert.equal(result.status, 1);
-  assert.match(result.stderr, /Atomic is not installed/);
-  assert.match(result.stderr, /ATOMIC_RUNTIME_DIR/);
-  assert.match(result.stderr, /does not build Atomic/);
+  assert.equal(result.stderr.trim(), 'ATOMIC_RUNTIME_NOT_FOUND');
 });

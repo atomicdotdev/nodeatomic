@@ -6,6 +6,9 @@ All Rust code—including the Node-API exports—lives in the separate Atomic
 project. This project has no Cargo manifest, Rust sources, or Rust lockfile.
 
 No atomicd, RPC connection, or service process is required.
+Repository operations use the in-process native protobuf boundary only: no CLI
+subprocess, JavaScript signing/private keys, daemon fallback, or alternate network
+client. Native sync resolves trusted-local identities and authorization internally.
 
 ## Load an installed Atomic runtime
 
@@ -208,6 +211,38 @@ await repo.views.switch('feature');
 await repo.views.switch(status.view);
 await repo.views.delete('feature');
 ```
+
+### Sync, remotes, and view insertion
+
+```ts
+await repo.remotes.add('origin', 'https://example.com/project', { setDefault: true });
+const remotes = await repo.remotes.list(); // response.remotes: name, url, default
+const pushed = await repo.push({ remote: 'origin', fromView: 'feature', toView: 'shared', identity: 'work' });
+const pulled = await repo.pull({ remote: 'origin', fromView: 'shared', toView: 'feature' });
+const inserted = await repo.views.insert('feature', 'shared', { dryRun: true });
+```
+
+`PushOptions` and `PullOptions` expose the canonical protocol controls, including
+`remote`, `fromView`, `toView`, `identity`, `dryRun`, `all`, `insecure`, and
+`timeoutSecs` (default **300 seconds**); push also supports `force`, `views` and
+`expected`, and pull supports `downloadOnly` and `importSidecars` (default **true**).
+They exclude `repository`, `authHeaders`, and `remoteUrl`; even untyped callers
+cannot override instance routing or supply authentication headers/URL overrides.
+Native code owns authentication and canonical graph synchronization. Pull and
+insertion retain the canonical handler's working-copy refresh policy: current-view
+targets may update host files, while inactive targets only change graph/view
+state. Responses retain native reports, conflicts and uint64/Long counters;
+callers must inspect outcomes.
+
+`AddRemoteOptions` exposes `setDefault`; adding and selecting a default is one
+native transaction. `InsertViewOptions` exposes `meta`, `allowConflicts`,
+`expectedSnapshot`, `sourceSnapshot`, `applyDependencies`, and `dryRun`. Insertion
+requires distinct non-empty source/target names, resolves the target's canonical
+`ViewRef` with `views.list()`, and uses the `from_view` source arm. Optional snapshot
+and dependency controls pass through unchanged. It inserts graph membership and
+dependencies, **not Git merging or view-scope promotion**. Source membership and
+target identity are never overridable through options.
+
 
 `repo.add` requires explicit paths (there is no add-all flag in this RPC).
 `repo.change(ref, { includes: { metadata: true } })` returns `metadata` with

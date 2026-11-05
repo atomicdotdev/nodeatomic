@@ -27,6 +27,14 @@ export type ListViewsOptions = Omit<Contract.ListViewsRequest.$Properties, 'repo
 export type CreateViewOptions = Omit<Contract.CreateViewRequest.$Properties, 'repository' | 'name'>;
 export type SwitchViewOptions = Omit<Contract.SwitchViewRequest.$Properties, 'repository' | 'view'>;
 export type DeleteViewOptions = Omit<Contract.DeleteViewRequest.$Properties, 'repository' | 'view'>;
+export type PushOptions = Omit<Contract.PushChangesRequest.$Properties, 'repository' | 'authHeaders' | 'remoteUrl'>;
+export type PullOptions = Omit<Contract.PullChangesRequest.$Properties, 'repository' | 'authHeaders' | 'remoteUrl'>;
+export type AddRemoteOptions = Pick<Contract.ManageRemotesRequest.$Properties, 'setDefault'>;
+export type InsertViewOptions = Pick<Contract.InsertChangesRequest.$Properties,
+  'meta' | 'allowConflicts' | 'expectedSnapshot' | 'sourceSnapshot' | 'applyDependencies' | 'dryRun'>;
+export type PushResponse = Contract.PushChangesResponse;
+export type PullResponse = Contract.PullChangesResponse;
+export type InsertViewResponse = Contract.InsertChangesResponse;
 /** A full binary hash, an unambiguous base32 prefix, or a view-log sequence. */
 export type ChangeReference = { hash: Uint8Array } | { prefix: string } |
   { sequence: NonNullable<Contract.ChangeRef.$Properties['sequence']> };
@@ -116,6 +124,37 @@ export class AtomicRepository {
     return { content: response.pristineContent ?? undefined, view: response.view ?? undefined };
   }
 
+  /** Synchronize through native canonical sync; native code resolves credentials. */
+  async push(options: PushOptions = {}): Promise<PushResponse> {
+    const { repository: _repository, authHeaders: _headers, remoteUrl: _url, ...request } =
+      options as Contract.PushChangesRequest.$Properties;
+    return proto.PushChangesResponse.decode(await call('/atomic.SyncService/PushChanges',
+      proto.PushChangesRequest.encode({ ...request, timeoutSecs: options.timeoutSecs ?? 300,
+        repository: this.reference }).finish()));
+  }
+
+  /** Synchronize graph/view state and report any native materialization outcome. */
+  async pull(options: PullOptions = {}): Promise<PullResponse> {
+    const { repository: _repository, authHeaders: _headers, remoteUrl: _url, ...request } =
+      options as Contract.PullChangesRequest.$Properties;
+    return proto.PullChangesResponse.decode(await call('/atomic.SyncService/PullChanges',
+      proto.PullChangesRequest.encode({ ...request, timeoutSecs: options.timeoutSecs ?? 300,
+        importSidecars: options.importSidecars ?? true, repository: this.reference }).finish()));
+  }
+
+  readonly remotes = {
+    list: async (): Promise<Contract.ListRemotesResponse> =>
+      proto.ListRemotesResponse.decode(await call('/atomic.SyncService/ListRemotes',
+        proto.ListRemotesRequest.encode({ repository: this.reference }).finish())),
+    add: async (name: string, url: string, options: AddRemoteOptions = {}): Promise<Contract.ManageRemotesResponse> => {
+      if (typeof name !== 'string' || !name.trim()) throw new TypeError('a non-empty remote name is required');
+      if (typeof url !== 'string' || !url.trim()) throw new TypeError('a non-empty remote URL is required');
+      return proto.ManageRemotesResponse.decode(await call('/atomic.SyncService/ManageRemotes',
+        proto.ManageRemotesRequest.encode({ setDefault: options.setDefault, name, url,
+          action: proto.RemoteAction.REMOTE_ACTION_ADD, repository: this.reference }).finish()));
+    },
+  };
+
   readonly views = {
     list: async (options: ListViewsOptions = {}): Promise<Contract.ListViewsResponse> =>
       proto.ListViewsResponse.decode(await call('/atomic.ViewService/ListViews',
@@ -136,6 +175,20 @@ export class AtomicRepository {
       requireName(name);
       return proto.DeleteViewResponse.decode(await call('/atomic.ViewService/DeleteView',
         proto.DeleteViewRequest.encode({ ...options, view: name, repository: this.reference }).finish()));
+    },
+    /** Insert source membership/dependencies into target, never promote scope. */
+    insert: async (source: string, target: string, options: InsertViewOptions = {}): Promise<InsertViewResponse> => {
+      requireName(source);
+      requireName(target);
+      if (source === target) throw new TypeError('source and target views must differ');
+      const views = await this.views.list();
+      const targetRef = views.views.find((view) => view.name === target)?.ref;
+      if (!targetRef) throw new Error(`target view not found: ${target}`);
+      return proto.InsertChangesResponse.decode(await call('/atomic.RepositoryMutationService/InsertChanges',
+        proto.InsertChangesRequest.encode({ meta: options.meta, allowConflicts: options.allowConflicts,
+          expectedSnapshot: options.expectedSnapshot, sourceSnapshot: options.sourceSnapshot,
+          applyDependencies: options.applyDependencies, dryRun: options.dryRun,
+          fromView: source, targetView: target, target: targetRef, repository: this.reference }).finish()));
     },
   };
 

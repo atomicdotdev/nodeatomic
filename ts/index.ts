@@ -10,6 +10,8 @@ export type {
   GetVaultOptions, ListVaultOptions, VaultContextOptions, VerificationOptions,
   AddOptions, RecordOptions, LogOptions, ChangeOptions, ChangeReference, StatusOptions,
   ListViewsOptions, CreateViewOptions, SwitchViewOptions, DeleteViewOptions,
+  PushOptions, PullOptions, AddRemoteOptions, InsertViewOptions,
+  PushResponse, PullResponse, InsertViewResponse,
   ChangeMetadata, ChangeAIUsage, ChangeTokenUsage, ChangeGraphSummary, ChangeFileSummary,
   ChangeBlastRadius, ChangeImpactFile, ChangeImpactEdge,
   ChangeIntentContext, ChangePlanBinding, ChangeIntentIdentity, ChangeIntentAssociation,
