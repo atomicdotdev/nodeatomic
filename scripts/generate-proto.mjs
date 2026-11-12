@@ -34,8 +34,17 @@ for (const name of [
   'PreviewRestoreRequest', 'PreviewMutationResponse',
   'ListViewsRequest', 'ListViewsResponse', 'CreateViewRequest', 'CreateViewResponse',
   'SwitchViewRequest', 'SwitchViewResponse', 'DeleteViewRequest', 'DeleteViewResponse',
+  'PushChangesRequest', 'PushChangesResponse', 'PullChangesRequest', 'PullChangesResponse',
+  'ListRemotesRequest', 'ListRemotesResponse', 'ManageRemotesRequest', 'ManageRemotesResponse',
+  'InsertChangesRequest', 'InsertChangesResponse',
   'GetVaultEntryRequest', 'GetVaultEntryResponse', 'ListVaultEntriesRequest', 'ListVaultEntriesResponse',
   'GetVaultContextRequest', 'GetVaultContextResponse', 'VerifyAttestationRequest', 'VerifyAttestationResponse',
+  'QueryGraphRequest', 'QueryGraphResponse',
+  'GetProjectIdentityRequest', 'GetProjectIdentityResponse',
+  'GetWorkflowSnapshotRequest', 'GetWorkflowSnapshotResponse',
+  'KGNode', 'KGEdge', 'CodeCaller',
+  'NeighborsQuery', 'CallersQuery', 'GraphSliceQuery',
+  'MaintainKnowledgeGraphRequest', 'MaintainKnowledgeGraphResponse',
 ]) {
   let type;
   try {

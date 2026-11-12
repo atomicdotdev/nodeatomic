@@ -5,10 +5,13 @@ import { call, proto as atomic } from './native.js';
 export { call, proto } from './native.js';
 export { AtomicRuntimeError } from './runtime/loader.mjs';
 export { openRepository, AtomicRepository } from './repository.js';
+export { KnowledgeClient } from './knowledge.js';
 export type {
   GetVaultOptions, ListVaultOptions, VaultContextOptions, VerificationOptions,
   AddOptions, RecordOptions, LogOptions, ChangeOptions, ChangeReference, StatusOptions,
   ListViewsOptions, CreateViewOptions, SwitchViewOptions, DeleteViewOptions,
+  PushOptions, PullOptions, AddRemoteOptions, InsertViewOptions,
+  PushResponse, PullResponse, InsertViewResponse,
   ChangeMetadata, ChangeAIUsage, ChangeTokenUsage, ChangeGraphSummary, ChangeFileSummary,
   ChangeBlastRadius, ChangeImpactFile, ChangeImpactEdge,
   ChangeIntentContext, ChangePlanBinding, ChangeIntentIdentity, ChangeIntentAssociation,

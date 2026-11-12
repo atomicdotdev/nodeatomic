@@ -6,6 +6,9 @@ All Rust code—including the Node-API exports—lives in the separate Atomic
 project. This project has no Cargo manifest, Rust sources, or Rust lockfile.
 
 No atomicd, RPC connection, or service process is required.
+Repository operations use the in-process native protobuf boundary only: no CLI
+subprocess, JavaScript signing/private keys, daemon fallback, or alternate network
+client. Native sync resolves trusted-local identities and authorization internally.
 
 ## Load an installed Atomic runtime
 
@@ -32,13 +35,19 @@ uses this order:
    development/CI. Do not set it together with `ATOMIC_RUNTIME_DIR`.
 3. **`ATOMIC_BIN`**: an explicit absolute Atomic executable path; load the runtime
    beside its resolved executable, following symlinks.
-4. Otherwise, find the **first Atomic executable on PATH** (`atomic.exe` on
+4. Otherwise, load the **registered installation**: the `runtime_dir` recorded by
+   the official installer in `${XDG_STATE_HOME:-$HOME/.local/state}/atomic/install.json`
+   (macOS default: `~/Library/Application Support/Atomic`). This is how an editor
+   launched from the Dock finds Atomic with no PATH or environment setup. A
+   registration whose directory is missing or invalid is a hard error; it never
+   falls through to PATH.
+5. Otherwise, find the **first Atomic executable on PATH** (`atomic.exe` on
    Windows), resolve its symlinks, and load the adjacent runtime.
 
 For example:
 
 ```sh
-ATOMIC_RUNTIME_DIR=/absolute/path/to/atomic/v0.19.1 node my-app.mjs
+ATOMIC_RUNTIME_DIR=/absolute/path/to/atomic/v0.22.0 node my-app.mjs
 ```
 
 Discovery reads files only: it never executes the CLI, invokes Cargo, downloads
@@ -55,6 +64,10 @@ report how to install Atomic or configure `ATOMIC_RUNTIME_DIR`. Errors expose a
 stable `code` through the exported `AtomicRuntimeError` class.
 
 ### Validation and compatibility
+
+This consumer is generated from the published **Atomic v0.22.0** native runtime
+(producer revision `61d8040ed25508ca00b778ae01d7c32499f1cab3`). Use the complete
+matching release, not an arbitrary development build or a CLI-only installation.
 
 Before loading a distributed runtime, nodeatomic checks its manifest schema,
 release identity fields, OS/CPU/target, Node-API requirement, library filename,
@@ -77,16 +90,33 @@ have mapped. A failed discovery attempt is not cached, so explicit configuration
 can be corrected before retrying.
 
 The distributable npm package contains JavaScript/types/codecs, **not native
-binaries**. Catalyst's existing build script still bundles its own native addon;
-removing that bundle and wiring installation guidance into the extension remain
-separate work. External Atomic installers/self-update must also preserve the
-runtime files; older CLI-only installations are not sufficient.
+binaries**. Atomic Sherpa vendors this consumer into its universal JavaScript-only
+VSIX and loads the runtime installed on the extension host. External Atomic
+installers/self-update must preserve the runtime files; older CLI-only
+installations are not sufficient.
 
 ## Build with a prebuilt producer artifact
 
 **This package never invokes Cargo, discovers an Atomic
 checkout, or builds native code.** Its inputs are a compiled addon and its own
 JavaScript dependencies. The projects need not be siblings.
+
+To regenerate against the released contract, extract the complete
+[Atomic v0.22.0 archive](https://github.com/atomicdotdev/atomic/releases/tag/v0.22.0)
+for the build host, verify its published checksum, then run:
+
+```sh
+npm ci
+ATOMIC_RUNTIME_DIR=/absolute/path/to/atomic/v0.22.0 npm run build
+ATOMIC_RUNTIME_DIR=/absolute/path/to/atomic/v0.22.0 \
+  ATOMIC_BIN=/absolute/path/to/atomic/v0.22.0/atomic npm test
+```
+
+The generator reads the installed library's embedded descriptor and regenerates
+both codecs/types and the compatibility fingerprint. Never update the fingerprint
+alone to bypass a contract mismatch.
+
+For an explicitly supplied development addon instead:
 
 ```sh
 cd ~/Projects/nodeatomic
@@ -202,6 +232,38 @@ await repo.views.switch('feature');
 await repo.views.switch(status.view);
 await repo.views.delete('feature');
 ```
+
+### Sync, remotes, and view insertion
+
+```ts
+await repo.remotes.add('origin', 'https://example.com/project', { setDefault: true });
+const remotes = await repo.remotes.list(); // response.remotes: name, url, default
+const pushed = await repo.push({ remote: 'origin', fromView: 'feature', toView: 'shared', identity: 'work' });
+const pulled = await repo.pull({ remote: 'origin', fromView: 'shared', toView: 'feature' });
+const inserted = await repo.views.insert('feature', 'shared', { dryRun: true });
+```
+
+`PushOptions` and `PullOptions` expose the canonical protocol controls, including
+`remote`, `fromView`, `toView`, `identity`, `dryRun`, `all`, `insecure`, and
+`timeoutSecs` (default **300 seconds**); push also supports `force`, `views` and
+`expected`, and pull supports `downloadOnly` and `importSidecars` (default **true**).
+They exclude `repository`, `authHeaders`, and `remoteUrl`; even untyped callers
+cannot override instance routing or supply authentication headers/URL overrides.
+Native code owns authentication and canonical graph synchronization. Pull and
+insertion retain the canonical handler's working-copy refresh policy: current-view
+targets may update host files, while inactive targets only change graph/view
+state. Responses retain native reports, conflicts and uint64/Long counters;
+callers must inspect outcomes.
+
+`AddRemoteOptions` exposes `setDefault`; adding and selecting a default is one
+native transaction. `InsertViewOptions` exposes `meta`, `allowConflicts`,
+`expectedSnapshot`, `sourceSnapshot`, `applyDependencies`, and `dryRun`. Insertion
+requires distinct non-empty source/target names, resolves the target's canonical
+`ViewRef` with `views.list()`, and uses the `from_view` source arm. Optional snapshot
+and dependency controls pass through unchanged. It inserts graph membership and
+dependencies, **not Git merging or view-scope promotion**. Source membership and
+target identity are never overridable through options.
+
 
 `repo.add` requires explicit paths (there is no add-all flag in this RPC).
 `repo.change(ref, { includes: { metadata: true } })` returns `metadata` with

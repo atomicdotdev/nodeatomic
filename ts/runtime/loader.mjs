@@ -92,6 +92,34 @@ function runtimeByExecutable(executable, host, spec) {
   return { path: join(directory, spec.library), manifest: readManifest(directory, host, spec) };
 }
 
+/** Location of the installer's machine record, mirroring the installer's own
+ * resolution: `${XDG_STATE_HOME:-$HOME/.local/state}/atomic/install.json`. */
+function installationRecordPath(env, host) {
+  const state = env.XDG_STATE_HOME && env.XDG_STATE_HOME !== '' ? env.XDG_STATE_HOME : '';
+  const home = env.HOME || (host.platform === 'win32' ? env.USERPROFILE : undefined) || '';
+  const base = state || (home ? join(home, '.local', 'state') : '');
+  return base ? join(base, 'atomic', 'install.json') : undefined;
+}
+
+/** The official installer registers the active complete runtime in its
+ * installation record, so editors find it without PATH or environment setup.
+ * A registration that exists but is broken is a hard error: silently loading a
+ * different installation would hide the exact drift the registration prevents.
+ * A record without `runtime_dir` is a CLI-only or legacy install — not a
+ * registration — so discovery continues to PATH. */
+function registeredRuntime(env, host, spec) {
+  const record = installationRecordPath(env, host);
+  if (!record || !exists(record)) return undefined;
+  let parsed;
+  try { parsed = JSON.parse(readFileSync(record, 'utf8')); }
+  catch (error) {
+    fail('ATOMIC_RUNTIME_CONFIGURATION', `Cannot parse the Atomic installation record ${record}. Re-run the Atomic installer to repair it: ${error.message}`, error);
+  }
+  if (!parsed || typeof parsed !== 'object' || parsed.runtime_dir === undefined) return undefined;
+  const directory = absolutePath(String(parsed.runtime_dir), `runtime_dir in ${record}`);
+  return { path: join(directory, spec.library), manifest: readManifest(directory, host, spec), registered: record };
+}
+
 /** Resolve installation files only: never execute a CLI, search source trees,
  * choose a "latest" version directory, or fall back after a bad installation. */
 export function resolveRuntime({ env = process.env, host = currentHost(), cwd = process.cwd() } = {}) {
@@ -126,6 +154,11 @@ export function resolveRuntime({ env = process.env, host = currentHost(), cwd = 
     return runtimeByExecutable(absolutePath(env.ATOMIC_BIN, 'ATOMIC_BIN'), host, spec);
   }
 
+  // Explicit configuration above; the registered installation outranks PATH
+  // discovery so an editor launched from the Dock uses the installer's choice.
+  const registered = registeredRuntime(env, host, spec);
+  if (registered) return registered;
+
   const filename = host.platform === 'win32' ? 'atomic.exe' : 'atomic';
   let workingDirectory;
   try { workingDirectory = realpathSync(cwd); } catch { workingDirectory = cwd; }
@@ -143,7 +176,7 @@ export function resolveRuntime({ env = process.env, host = currentHost(), cwd = 
     // there is an error, not permission to load a different installation.
     return runtimeByExecutable(executable, host, spec);
   }
-  fail('ATOMIC_RUNTIME_NOT_FOUND', `Atomic is not installed or is not on a trusted absolute PATH entry. Install Atomic with ${spec.library} and libatomic-runtime.json, or set ATOMIC_RUNTIME_DIR to its installation directory. nodeatomic does not build Atomic.`);
+  fail('ATOMIC_RUNTIME_NOT_FOUND', `Atomic is not installed or is not on a trusted absolute PATH entry. Install Atomic with ${spec.library} and libatomic-runtime.json (the official installer registers it automatically), or set ATOMIC_RUNTIME_DIR to its installation directory. nodeatomic does not build Atomic.`);
 }
 
 function dlopen(path) {

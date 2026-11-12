@@ -4,25 +4,26 @@ import { createHash } from 'node:crypto';
 import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { after, test } from 'node:test';
+import { test } from 'node:test';
 import { call, openRepository, proto } from '../dist/index.js';
 
-const config = await mkdtemp(join(tmpdir(), 'nodeatomic-identities-'));
-process.env.ATOMIC_CONFIG_DIR = config;
 process.env.ATOMIC_SERVICE = 'reactor';
 process.env.ATOMIC_DAEMON_SOCKET = '/nonexistent/nodeatomic-vault.sock';
-after(() => rm(config, { recursive: true, force: true }));
-const env = { ...process.env, ATOMIC_SERVICE: 'local', ATOMIC_RPC: '0' };
 const atomic = process.env.ATOMIC_BIN ?? 'atomic';
-const cli = (root, ...args) => execFileSync(atomic, args, { cwd: root, env, encoding: 'utf8' });
+const cli = (root, ...args) => execFileSync(atomic, args, {
+  cwd: root, env: { ...process.env, ATOMIC_SERVICE: 'local', ATOMIC_RPC: '0' }, encoding: 'utf8'
+});
 const digest = async (root) => createHash('sha256')
   .update(await readFile(join(root, '.atomic/atomic.redb'))).digest('hex');
 async function fixture(t) {
   const root = await mkdtemp(join(tmpdir(), 'nodeatomic-vault-'));
+  const config = await mkdtemp(join(tmpdir(), 'nodeatomic-identities-'));
+  process.env.ATOMIC_CONFIG_DIR = config;
+  t.after(() => rm(config, { recursive: true, force: true }));
   t.after(() => rm(root, { recursive: true, force: true }));
   cli(root, 'init', '--vault', '.');
   cli(root, 'intent', 'new', 'Editor integration fixture');
-  return { root, repo: await openRepository(root) };
+  return { root, repo: await openRepository(root), config };
 }
 
 test('reads stored vault entries, intents and context without mutating the database', async (t) => {
@@ -52,7 +53,7 @@ test('reads stored vault entries, intents and context without mutating the datab
 });
 
 test('returns a stored signed intent using only public identity data', async (t) => {
-  const { root, repo } = await fixture(t);
+  const { root, repo, config } = await fixture(t);
   cli(root, 'identity', 'new', 'fixture-signer', '--set-default');
   const id = (await repo.vault.listIntents()).entries[0].id;
   cli(root, 'intent', 'attest', id, '--identity', 'fixture-signer');
