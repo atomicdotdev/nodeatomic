@@ -47,7 +47,7 @@ uses this order:
 For example:
 
 ```sh
-ATOMIC_RUNTIME_DIR=/absolute/path/to/atomic/v0.19.1 node my-app.mjs
+ATOMIC_RUNTIME_DIR=/absolute/path/to/atomic/v0.22.0 node my-app.mjs
 ```
 
 Discovery reads files only: it never executes the CLI, invokes Cargo, downloads
@@ -64,6 +64,10 @@ report how to install Atomic or configure `ATOMIC_RUNTIME_DIR`. Errors expose a
 stable `code` through the exported `AtomicRuntimeError` class.
 
 ### Validation and compatibility
+
+This consumer is generated from the published **Atomic v0.22.0** native runtime
+(producer revision `61d8040ed25508ca00b778ae01d7c32499f1cab3`). Use the complete
+matching release, not an arbitrary development build or a CLI-only installation.
 
 Before loading a distributed runtime, nodeatomic checks its manifest schema,
 release identity fields, OS/CPU/target, Node-API requirement, library filename,
@@ -86,16 +90,33 @@ have mapped. A failed discovery attempt is not cached, so explicit configuration
 can be corrected before retrying.
 
 The distributable npm package contains JavaScript/types/codecs, **not native
-binaries**. Catalyst's existing build script still bundles its own native addon;
-removing that bundle and wiring installation guidance into the extension remain
-separate work. External Atomic installers/self-update must also preserve the
-runtime files; older CLI-only installations are not sufficient.
+binaries**. Atomic Sherpa vendors this consumer into its universal JavaScript-only
+VSIX and loads the runtime installed on the extension host. External Atomic
+installers/self-update must preserve the runtime files; older CLI-only
+installations are not sufficient.
 
 ## Build with a prebuilt producer artifact
 
 **This package never invokes Cargo, discovers an Atomic
 checkout, or builds native code.** Its inputs are a compiled addon and its own
 JavaScript dependencies. The projects need not be siblings.
+
+To regenerate against the released contract, extract the complete
+[Atomic v0.22.0 archive](https://github.com/atomicdotdev/atomic/releases/tag/v0.22.0)
+for the build host, verify its published checksum, then run:
+
+```sh
+npm ci
+ATOMIC_RUNTIME_DIR=/absolute/path/to/atomic/v0.22.0 npm run build
+ATOMIC_RUNTIME_DIR=/absolute/path/to/atomic/v0.22.0 \
+  ATOMIC_BIN=/absolute/path/to/atomic/v0.22.0/atomic npm test
+```
+
+The generator reads the installed library's embedded descriptor and regenerates
+both codecs/types and the compatibility fingerprint. Never update the fingerprint
+alone to bypass a contract mismatch.
+
+For an explicitly supplied development addon instead:
 
 ```sh
 cd ~/Projects/nodeatomic
