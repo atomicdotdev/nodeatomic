@@ -63,6 +63,13 @@ tries a different installation or a package-bundled binary. Missing installation
 report how to install Atomic or configure `ATOMIC_RUNTIME_DIR`. Errors expose a
 stable `code` through the exported `AtomicRuntimeError` class.
 
+Use `resolveRuntime()` from `nodeatomic` to check installation discovery before
+opening a repository, including in a Git-only workspace. It returns the selected
+library path and optional manifest, or throws an `AtomicRuntimeError`. It reads
+installation metadata only; it does not load native code, execute the CLI, or
+verify binary integrity or the loaded protobuf descriptor. Those checks still
+run on the first Atomic operation. Discovery failures are not cached.
+
 ### Validation and compatibility
 
 This consumer is generated from the published **Atomic v0.22.0** native runtime
